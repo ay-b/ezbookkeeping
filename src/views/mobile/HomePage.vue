@@ -51,6 +51,13 @@
                         <f7-icon f7="wand_stars"></f7-icon>
                     </template>
                 </f7-list-item>
+                <f7-list-item key="ReceiptSplit" link="/transaction/receipt_split" no-chevron popover-close
+                              :title="tt('Split Receipt by Category')"
+                              v-if="isReceiptItemsClassificationEnabled()">
+                    <template #media>
+                        <f7-icon f7="doc_text_viewfinder"></f7-icon>
+                    </template>
+                </f7-list-item>
                 <f7-list-item popover-close :key="template.id" :title="template.name"
                               :link="'/transaction/add?templateId=' + template.id"
                               v-for="template in allTransactionTemplates">
@@ -109,7 +116,8 @@ import { isUserLogined, isUserUnlocked } from '@/lib/userstate.ts';
 import { getShareCacheImageBlob } from '@/lib/cache.ts';
 import {
     isTransactionFromAITextRecognitionEnabled,
-    isTransactionFromAIImageRecognitionEnabled
+    isTransactionFromAIImageRecognitionEnabled,
+    isReceiptItemsClassificationEnabled
 } from '@/lib/server_settings.ts';
 import logger from '@/lib/logger.ts';
 
@@ -148,7 +156,7 @@ const allTransactionTemplates = computed<TransactionTemplate[]>(() => {
     return allTemplates[TemplateType.Normal.type] || [];
 });
 
-const hasTransactionAddMenuItems = computed<boolean>(() => isTransactionFromAITextRecognitionEnabled() || isTransactionFromAIImageRecognitionEnabled() || (allTransactionTemplates.value && allTransactionTemplates.value.length > 0));
+const hasTransactionAddMenuItems = computed<boolean>(() => isTransactionFromAITextRecognitionEnabled() || isTransactionFromAIImageRecognitionEnabled() || isReceiptItemsClassificationEnabled() || (allTransactionTemplates.value && allTransactionTemplates.value.length > 0));
 
 function openTransactionTemplatePopover(): void {
     if (hasTransactionAddMenuItems.value) {

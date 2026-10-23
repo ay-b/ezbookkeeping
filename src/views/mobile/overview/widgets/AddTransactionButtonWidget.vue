@@ -39,6 +39,14 @@
                     <f7-icon f7="wand_stars"></f7-icon>
                 </template>
             </f7-list-item>
+            <f7-list-item key="ReceiptSplit" link="#" no-chevron popover-close
+                          :title="tt('Split Receipt by Category')"
+                          @click="emit('navigate', MobileOverviewWidgetNavigationType.Url, '/transaction/receipt_split')"
+                          v-if="isReceiptItemsClassificationEnabled()">
+                <template #media>
+                    <f7-icon f7="doc_text_viewfinder"></f7-icon>
+                </template>
+            </f7-list-item>
             <f7-list-item popover-close link="#" :key="template.id" :title="template.name"
                           @click="emit('navigate', MobileOverviewWidgetNavigationType.Url, '/transaction/add?templateId=' + template.id)"
                           v-for="template in allTransactionTemplates">
@@ -69,7 +77,8 @@ import type { TransactionTemplate } from '@/models/transaction_template.ts';
 import { getContrastTextColor } from '@/lib/color.ts';
 import {
     isTransactionFromAITextRecognitionEnabled,
-    isTransactionFromAIImageRecognitionEnabled
+    isTransactionFromAIImageRecognitionEnabled,
+    isReceiptItemsClassificationEnabled
 } from '@/lib/server_settings.ts';
 
 const props = defineProps<{
@@ -142,7 +151,7 @@ const allTransactionTemplates = computed<TransactionTemplate[]>(() => {
     return allTemplates[TemplateType.Normal.type] || [];
 });
 
-const hasTransactionAddMenuItems = computed<boolean>(() => isTransactionFromAITextRecognitionEnabled() || isTransactionFromAIImageRecognitionEnabled() || (allTransactionTemplates.value && allTransactionTemplates.value.length > 0));
+const hasTransactionAddMenuItems = computed<boolean>(() => isTransactionFromAITextRecognitionEnabled() || isTransactionFromAIImageRecognitionEnabled() || isReceiptItemsClassificationEnabled() || (allTransactionTemplates.value && allTransactionTemplates.value.length > 0));
 </script>
 
 <style>

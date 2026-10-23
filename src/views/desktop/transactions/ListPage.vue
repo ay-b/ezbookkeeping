@@ -57,7 +57,7 @@
                                 <v-btn class="ms-3" color="default" variant="outlined"
                                        :disabled="loading || !canAddTransaction" @click="add()">
                                     {{ tt('Add') }}
-                                    <v-menu activator="parent" max-height="500" :open-on-hover="true" v-if="isTransactionFromAITextRecognitionEnabled() || isTransactionFromAIImageRecognitionEnabled() || (allTransactionTemplates && allTransactionTemplates.length)">
+                                    <v-menu activator="parent" max-height="500" :open-on-hover="true" v-if="isTransactionFromAITextRecognitionEnabled() || isTransactionFromAIImageRecognitionEnabled() || isReceiptItemsClassificationEnabled() || (allTransactionTemplates && allTransactionTemplates.length)">
                                         <v-list>
                                             <v-list-item key="AIClipboardTextRecognition"
                                                          :title="tt('AI Clipboard Text Recognition')"
@@ -69,6 +69,11 @@
                                                          :prepend-icon="mdiMagicStaff"
                                                          v-if="isTransactionFromAIImageRecognitionEnabled()"
                                                          @click="addByRecognizingImage"></v-list-item>
+                                            <v-list-item key="ReceiptSplit"
+                                                         :title="tt('Split Receipt by Category')"
+                                                         :prepend-icon="mdiReceiptTextOutline"
+                                                         v-if="isReceiptItemsClassificationEnabled()"
+                                                         @click="addBySplittingReceipt"></v-list-item>
                                             <v-list-item :key="template.id"
                                                          :title="template.name"
                                                          :prepend-icon="mdiTextBoxOutline"
@@ -682,6 +687,7 @@
     <edit-dialog ref="editDialog" :type="TransactionEditPageType.Transaction" />
     <a-i-image-recognition-dialog ref="aiImageRecognitionDialog" />
     <import-dialog ref="importDialog" :persistent="true" />
+    <receipt-split-dialog ref="receiptSplitDialog" />
 
     <account-filter-settings-dialog type="transactionListCurrent"
                                     v-model:show="showFilterAccountDialog"
@@ -708,6 +714,7 @@ import SnackBar from '@/components/desktop/SnackBar.vue';
 import EditDialog from './list/dialogs/EditDialog.vue';
 import AIImageRecognitionDialog from './list/dialogs/AIImageRecognitionDialog.vue';
 import ImportDialog from './import/ImportDialog.vue';
+import ReceiptSplitDialog from './list/dialogs/ReceiptSplitDialog.vue';
 import AccountFilterSettingsDialog from '@/views/desktop/common/dialogs/AccountFilterSettingsDialog.vue';
 import CategoryFilterSettingsDialog from '@/views/desktop/common/dialogs/CategoryFilterSettingsDialog.vue';
 import TransactionTagFilterSettingsDialog from '@/views/desktop/common/dialogs/TransactionTagFilterSettingsDialog.vue';
@@ -790,7 +797,8 @@ import {
     isDataExportingEnabled,
     isDataImportingEnabled,
     isTransactionFromAITextRecognitionEnabled,
-    isTransactionFromAIImageRecognitionEnabled
+    isTransactionFromAIImageRecognitionEnabled,
+    isReceiptItemsClassificationEnabled
 } from '@/lib/server_settings.ts';
 import { scrollToSelectedItem, startDownloadFile } from '@/lib/ui/common.ts';
 import logger from '@/lib/logger.ts';
@@ -810,6 +818,7 @@ import {
     mdiPound,
     mdiMagicStaff,
     mdiTextBoxOutline,
+    mdiReceiptTextOutline,
     mdiTextBoxEditOutline
 } from '@mdi/js';
 
@@ -834,6 +843,7 @@ type SnackBarType = InstanceType<typeof SnackBar>;
 type EditDialogType = InstanceType<typeof EditDialog>;
 type AIImageRecognitionDialogType = InstanceType<typeof AIImageRecognitionDialog>;
 type ImportDialogType = InstanceType<typeof ImportDialog>;
+type ReceiptSplitDialogType = InstanceType<typeof ReceiptSplitDialog>;
 
 const router = useRouter();
 const theme = useTheme();
@@ -924,6 +934,7 @@ const snackbar = useTemplateRef<SnackBarType>('snackbar');
 const editDialog = useTemplateRef<EditDialogType>('editDialog');
 const aiImageRecognitionDialog = useTemplateRef<AIImageRecognitionDialogType>('aiImageRecognitionDialog');
 const importDialog = useTemplateRef<ImportDialogType>('importDialog');
+const receiptSplitDialog = useTemplateRef<ReceiptSplitDialogType>('receiptSplitDialog');
 
 const activeTab = ref<string>('transactionPage');
 const currentPage = ref<number>(1);
@@ -1683,6 +1694,17 @@ function addByRecognizingImage(): void {
                 snackbar.value?.showError(error);
             }
         });
+    });
+}
+
+function addBySplittingReceipt(): void {
+    receiptSplitDialog.value?.open().then(importedCount => {
+        snackbar.value?.showMessage('format.misc.youHaveAddedTransactionsCount', { count: importedCount });
+        reload(false, false);
+    }).catch(error => {
+        if (error) {
+            snackbar.value?.showError(error);
+        }
     });
 }
 

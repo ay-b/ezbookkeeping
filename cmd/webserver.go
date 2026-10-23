@@ -24,6 +24,7 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/middlewares"
 	"github.com/mayswind/ezbookkeeping/pkg/requestid"
 	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/mayswind/ezbookkeeping/pkg/typesafe"
 	"github.com/mayswind/ezbookkeeping/pkg/utils"
 	"github.com/mayswind/ezbookkeeping/pkg/validators"
 )
@@ -494,6 +495,10 @@ func startWebServer(c *core.CliContext) error {
 				if config.TransactionFromAIImageRecognition {
 					apiV1Route.POST("/llm/transactions/recognize_receipt_image.json", bindApi(api.LargeLanguageModels.RecognizeReceiptImageHandler, config))
 				}
+			}
+
+			if typesafe.IsSystemOneEnabled(config) {
+				apiV1Route.POST("/llm/transactions/classify_receipt_items.json", bindApi(api.ReceiptItems.ClassifyReceiptItemsHandler, config))
 			}
 
 			if config.CodingAssistantLLMConfig != nil && config.CodingAssistantLLMConfig.LLMProvider != "" {

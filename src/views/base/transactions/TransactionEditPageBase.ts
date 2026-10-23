@@ -36,12 +36,10 @@ import {
 
 import {
     parseBigDecimal,
-    getExchangedAmountByRate,
-    getAmountWithDecimalNumberCount
+    getExchangedAmountByRate
 } from '@/lib/numeral.ts';
 
-import { getCurrencyFraction } from '@/lib/currency.ts';
-import { getTemplateConversionNoteLine, appendTemplateConversionNoteLine } from '@/lib/template.ts';
+import { getTemplateConversionNoteLine, appendTemplateConversionNoteLine, getAmountConvertedByTemplate } from '@/lib/template.ts';
 
 import {
     getUtcOffsetByUtcOffsetMinutes,
@@ -462,21 +460,7 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
             return amount;
         }
 
-        const convertedAmount = exchangeRatesStore.getExchangedAmount(parseBigDecimal(amount), templateCurrency, accountCurrency);
-
-        if (!convertedAmount) {
-            return null;
-        }
-
-        const commission = conversionTemplate.value.conversionCommission || 0;
-        let finalAmount = parseBigDecimal(Math.round(convertedAmount.multiply(100 + commission).divide(100).toDoubleNumber()));
-        const accountCurrencyFraction = getCurrencyFraction(accountCurrency);
-
-        if (isNumber(accountCurrencyFraction)) {
-            finalAmount = getAmountWithDecimalNumberCount(finalAmount, accountCurrencyFraction);
-        }
-
-        return finalAmount.toSafeIntegerNumber();
+        return getAmountConvertedByTemplate(amount, templateCurrency, accountCurrency, conversionTemplate.value.conversionCommission, exchangeRatesStore.getExchangedAmount);
     }
 
     // returns the amount and description to save, or an error message when the template conversion cannot be applied

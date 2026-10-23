@@ -7,6 +7,7 @@ import (
 	"github.com/mayswind/ezbookkeeping/pkg/core"
 	"github.com/mayswind/ezbookkeeping/pkg/errs"
 	"github.com/mayswind/ezbookkeeping/pkg/settings"
+	"github.com/mayswind/ezbookkeeping/pkg/typesafe"
 	"github.com/mayswind/ezbookkeeping/pkg/utils"
 )
 
@@ -71,6 +72,10 @@ func (a *ServerSettingsApi) ServerSettingsJavascriptHandler(c *core.WebContext) 
 		if config.TransactionFromAIImageRecognition {
 			a.appendBooleanSetting(builder, "llmir", config.TransactionFromAIImageRecognition)
 		}
+	}
+
+	if typesafe.IsSystemOneEnabled(config) {
+		a.appendBooleanSetting(builder, "tsrc", true)
 	}
 
 	if config.CodingAssistantLLMConfig != nil && config.CodingAssistantLLMConfig.LLMProvider != "" {

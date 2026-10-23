@@ -210,6 +210,10 @@ func getConfigWithoutSensitiveData(config *settings.Config) *settings.Config {
 		clonedConfig.SecretKey = "****"
 	}
 
+	if clonedConfig.TypeSafeAPIKey != "" {
+		clonedConfig.TypeSafeAPIKey = "****"
+	}
+
 	if clonedConfig.OAuth2ClientSecret != "" {
 		clonedConfig.OAuth2ClientSecret = "****"
 	}

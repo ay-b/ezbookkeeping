@@ -71,6 +71,10 @@ export function isTransactionFromAIImageRecognitionEnabled(): boolean {
     return getServerSetting('llmir') === 1;
 }
 
+export function isReceiptItemsClassificationEnabled(): boolean {
+    return getServerSetting('tsrc') === 1 && isDataImportingEnabled();
+}
+
 export function isInsightsExplorerCodingAssistantEnabled(): boolean {
     return getServerSetting('llmec') === 1;
 }

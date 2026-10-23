@@ -213,6 +213,7 @@ const (
 	defaultImportFileMaxSize uint32 = 10485760 // 10MB
 
 	defaultExchangeRatesDataRequestTimeout uint32 = 10000 // 10 seconds
+	defaultTypeSafeRequestTimeout          uint32 = 30000 // 30 seconds
 )
 
 // DatabaseConfig represents the database setting config
@@ -382,6 +383,14 @@ type Config struct {
 	TransactionFromAIImageRecognition bool
 	InsightsExplorerCodingAssistant   bool
 	MaxAIRecognitionPictureFileSize   uint32
+
+	// TypeSafe System One for Receipt Items Classification
+	TypeSafeAPIKey         string
+	TypeSafeModelID        string
+	TypeSafeBaseURL        string
+	TypeSafeRequestTimeout uint32
+	TypeSafeProxy          string
+	TypeSafeSkipTLSVerify  bool
 
 	// Large Language Model for Transaction Text Recognition
 	TextRecognitionLLMConfig *LLMConfig
@@ -567,6 +576,12 @@ func LoadConfiguration(configFilePath string) (*Config, error) {
 	}
 
 	err = loadAIConfiguration(config, cfgFile, "ai")
+
+	if err != nil {
+		return nil, err
+	}
+
+	err = loadTypeSafeConfiguration(config, cfgFile, "typesafe")
 
 	if err != nil {
 		return nil, err
@@ -938,6 +953,17 @@ func loadAIConfiguration(config *Config, configFile *ini.File, sectionName strin
 	config.TransactionFromAIImageRecognition = getConfigItemBoolValue(configFile, sectionName, "transaction_from_ai_image_recognition", false)
 	config.InsightsExplorerCodingAssistant = getConfigItemBoolValue(configFile, sectionName, "insights_explorer_coding_assistant", false)
 	config.MaxAIRecognitionPictureFileSize = getConfigItemUint32Value(configFile, sectionName, "max_ai_recognition_picture_size", defaultAIRecognitionPictureMaxSize)
+
+	return nil
+}
+
+func loadTypeSafeConfiguration(config *Config, configFile *ini.File, sectionName string) error {
+	config.TypeSafeAPIKey = getConfigItemStringValue(configFile, sectionName, "api_key")
+	config.TypeSafeModelID = getConfigItemStringValue(configFile, sectionName, "model_id", "jev-latest")
+	config.TypeSafeBaseURL = getConfigItemStringValue(configFile, sectionName, "base_url", "https://api.typesafe.ai/")
+	config.TypeSafeRequestTimeout = getConfigItemUint32Value(configFile, sectionName, "request_timeout", defaultTypeSafeRequestTimeout)
+	config.TypeSafeProxy = getConfigItemStringValue(configFile, sectionName, "proxy", "system")
+	config.TypeSafeSkipTLSVerify = getConfigItemBoolValue(configFile, sectionName, "skip_tls_verify", false)
 
 	return nil
 }

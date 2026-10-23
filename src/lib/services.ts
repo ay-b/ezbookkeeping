@@ -187,6 +187,10 @@ import type {
     CodingAssistantResponse
 } from '@/models/large_language_model.ts';
 import type {
+    ReceiptItemsClassificationRequest,
+    ReceiptItemsClassificationResponse
+} from '@/models/receipt_item.ts';
+import type {
     UserCustomIconInfoResponse,
     UserCustomIconMoveRequest,
     UserCustomIconDeleteRequest
@@ -906,6 +910,11 @@ export default {
         }, {
             timeout: DEFAULT_LLM_API_TIMEOUT,
             cancelableUuid: cancelableUuid
+        } as ApiRequestConfig);
+    },
+    classifyReceiptItems: (req: ReceiptItemsClassificationRequest): ApiResponsePromise<ReceiptItemsClassificationResponse> => {
+        return axios.post<ApiResponse<ReceiptItemsClassificationResponse>>('v1/llm/transactions/classify_receipt_items.json', req, {
+            timeout: DEFAULT_LLM_API_TIMEOUT
         } as ApiRequestConfig);
     },
     generateCode: (req: CodingAssistantRequest, cancelableUuid?: string): ApiResponsePromise<CodingAssistantResponse> => {

@@ -1,7 +1,34 @@
 import { reversed } from '@/core/base.ts';
+import type { BigDecimal } from '@/core/numeral.ts';
 import { AMOUNT_FACTOR, MAX_SUPPORTED_DECIMAL_NUMBER_COUNT } from '@/consts/numeral.ts';
 import { TransactionTemplate } from '@/models/transaction_template.ts';
+import { isNumber } from '@/lib/common.ts';
 import { getCurrencyFraction } from '@/lib/currency.ts';
+import { parseBigDecimal, getAmountWithDecimalNumberCount } from '@/lib/numeral.ts';
+
+export type ExchangedAmountGetter = (amount: BigDecimal, fromCurrency: string, toCurrency: string) => BigDecimal | null;
+
+// returns the amount converted from the template currency to the account currency and increased by the commission percentage, or null when the exchange rate is not available
+export function getAmountConvertedByTemplate(amount: number, templateCurrency: string, accountCurrency: string, commission: number, getExchangedAmount: ExchangedAmountGetter): number | null {
+    if (templateCurrency === accountCurrency) {
+        return amount;
+    }
+
+    const convertedAmount = getExchangedAmount(parseBigDecimal(amount), templateCurrency, accountCurrency);
+
+    if (!convertedAmount) {
+        return null;
+    }
+
+    let finalAmount = parseBigDecimal(Math.round(convertedAmount.multiply(100 + (commission || 0)).divide(100).toDoubleNumber()));
+    const accountCurrencyFraction = getCurrencyFraction(accountCurrency);
+
+    if (isNumber(accountCurrencyFraction)) {
+        finalAmount = getAmountWithDecimalNumberCount(finalAmount, accountCurrencyFraction);
+    }
+
+    return finalAmount.toSafeIntegerNumber();
+}
 
 export function getTemplateConversionNoteLine(templateCurrencyAmount: number, templateCurrency: string, accountCurrency: string): string {
     const fraction = getCurrencyFraction(templateCurrency) ?? MAX_SUPPORTED_DECIMAL_NUMBER_COUNT;
