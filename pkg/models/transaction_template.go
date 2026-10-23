@@ -46,14 +46,17 @@ type TransactionTemplate struct {
 	ScheduledAt                int16                            `xorm:"INDEX(IDX_transaction_template_deleted_type_freqtype_scheduled_time)"`
 	ScheduledTimezoneName      string                           `xorm:"VARCHAR(100)"`
 	ScheduledTimezoneUtcOffset int16
-	TagIds                     string `xorm:"VARCHAR(255) NOT NULL"`
-	Amount                     int64  `xorm:"NOT NULL"`
-	RelatedAccountId           int64  `xorm:"NOT NULL"`
-	RelatedAccountAmount       int64  `xorm:"NOT NULL"`
-	HideAmount                 bool   `xorm:"NOT NULL"`
-	Comment                    string `xorm:"VARCHAR(255) NOT NULL"`
-	DisplayOrder               int32  `xorm:"INDEX(IDX_transaction_template_uid_deleted_template_type_order) NOT NULL"`
-	Hidden                     bool   `xorm:"NOT NULL"`
+	TagIds                     string  `xorm:"VARCHAR(255) NOT NULL"`
+	EnableConversion           bool    `xorm:"NOT NULL DEFAULT false"`
+	SourceCurrency             *string `xorm:"VARCHAR(3)"`
+	ConversionCommission       float64 `xorm:"DECIMAL(5,2) DEFAULT 0"`
+	Amount                     int64   `xorm:"NOT NULL"`
+	RelatedAccountId           int64   `xorm:"NOT NULL"`
+	RelatedAccountAmount       int64   `xorm:"NOT NULL"`
+	HideAmount                 bool    `xorm:"NOT NULL"`
+	Comment                    string  `xorm:"VARCHAR(255) NOT NULL"`
+	DisplayOrder               int32   `xorm:"INDEX(IDX_transaction_template_uid_deleted_template_type_order) NOT NULL"`
+	Hidden                     bool    `xorm:"NOT NULL"`
 	CreatedUnixTime            int64
 	UpdatedUnixTime            int64
 	DeletedUnixTime            int64
@@ -80,6 +83,9 @@ type TransactionTemplateCreateRequest struct {
 	SourceAmount               int64                             `json:"sourceAmount" binding:"validTransactionAmount"`
 	DestinationAmount          int64                             `json:"destinationAmount" binding:"validTransactionAmount"`
 	HideAmount                 bool                              `json:"hideAmount"`
+	EnableConversion           *bool                             `json:"enableConversion"`
+	SourceCurrency             *string                           `json:"sourceCurrency" binding:"omitempty,len=3"`
+	ConversionCommission       *float64                          `json:"conversionCommission" binding:"omitempty,min=0,max=99.99"`
 	TagIds                     []string                          `json:"tagIds"`
 	Comment                    string                            `json:"comment" binding:"max=255"`
 	ScheduledFrequencyType     *TransactionScheduleFrequencyType `json:"scheduledFrequencyType" binding:"omitempty"`
@@ -108,6 +114,9 @@ type TransactionTemplateModifyRequest struct {
 	SourceAmount               int64                             `json:"sourceAmount" binding:"validTransactionAmount"`
 	DestinationAmount          int64                             `json:"destinationAmount" binding:"validTransactionAmount"`
 	HideAmount                 bool                              `json:"hideAmount"`
+	EnableConversion           *bool                             `json:"enableConversion"`
+	SourceCurrency             *string                           `json:"sourceCurrency" binding:"omitempty,len=3"`
+	ConversionCommission       *float64                          `json:"conversionCommission" binding:"omitempty,min=0,max=99.99"`
 	TagIds                     []string                          `json:"tagIds"`
 	Comment                    string                            `json:"comment" binding:"max=255"`
 	ScheduledFrequencyType     *TransactionScheduleFrequencyType `json:"scheduledFrequencyType" binding:"omitempty"`
@@ -144,6 +153,9 @@ type TransactionTemplateInfoResponse struct {
 	*TransactionInfoResponse
 	TemplateType           TransactionTemplateType           `json:"templateType"`
 	Name                   string                            `json:"name"`
+	EnableConversion       bool                              `json:"enableConversion"`
+	SourceCurrency         *string                           `json:"sourceCurrency,omitempty"`
+	ConversionCommission   *float64                          `json:"conversionCommission,omitempty"`
 	ScheduledFrequencyType *TransactionScheduleFrequencyType `json:"scheduledFrequencyType,omitempty"`
 	ScheduledFrequency     *string                           `json:"scheduledFrequency,omitempty"`
 	ScheduledStartDate     *string                           `json:"scheduledStartDate" binding:"omitempty"`
@@ -179,8 +191,14 @@ func (t *TransactionTemplate) ToTransactionTemplateInfoResponse(serverUtcOffset 
 		TransactionInfoResponse: t.toTransactionInfoResponse(utcOffset),
 		TemplateType:            t.TemplateType,
 		Name:                    t.Name,
+		EnableConversion:        t.EnableConversion,
+		SourceCurrency:          t.SourceCurrency,
 		DisplayOrder:            t.DisplayOrder,
 		Hidden:                  t.Hidden,
+	}
+
+	if t.ConversionCommission != 0 {
+		response.ConversionCommission = &t.ConversionCommission
 	}
 
 	if t.TemplateType == TRANSACTION_TEMPLATE_TYPE_SCHEDULE {

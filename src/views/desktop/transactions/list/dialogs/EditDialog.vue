@@ -69,7 +69,7 @@
             <template #content-left-column>
                 <div class="px-4">
                     <v-tabs class="v-tabs-pill" direction="vertical" :class="{ 'readonly': type === TransactionEditPageType.Transaction && mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit }"
-                            :disabled="loading || submitting || recognizing" v-model="transaction.type">
+                            :disabled="loading || submitting || recognizing || isNormalTemplate" v-model="transaction.type">
                         <v-tab :value="TransactionType.Expense" :disabled="type === TransactionEditPageType.Transaction && mode !== TransactionEditPageMode.Add && mode !== TransactionEditPageMode.Edit && transaction.type !== TransactionType.Expense" v-if="transaction.type !== TransactionType.ModifyBalance">
                             <span>{{ tt('Expense') }}</span>
                         </v-tab>
@@ -90,6 +90,9 @@
                         <v-tab value="basicInfo">
                             <span>{{ tt('Basic Information') }}</span>
                         </v-tab>
+                        <v-tab value="conversion" v-if="shouldShowCurrencyConversion">
+                            <span>{{ tt('Conversion') }}</span>
+                        </v-tab>
                         <v-tab value="map" :disabled="!transaction.geoLocation" v-if="type === TransactionEditPageType.Transaction && !!getMapProvider()">
                             <span>{{ tt('Location on Map') }}</span>
                         </v-tab>
@@ -106,6 +109,16 @@
                     <v-window-item value="basicInfo">
                         <v-form class="my-4">
                             <v-row>
+                                <v-col cols="12" v-if="isUsingNormalTemplate && templateBeingUsed">
+                                    <v-alert type="info" variant="tonal" density="compact">
+                                        <div class="text-body-2">
+                                            <div>{{ tt('Using template') }}: {{ templateBeingUsed.name }}</div>
+                                            <div v-if="templateBeingUsed.enableConversion && templateBeingUsed.sourceCurrency && templateBeingUsed.sourceCurrency !== sourceAccountCurrency">
+                                                {{ tt('Amount will be converted from') }} {{ templateBeingUsed.sourceCurrency }} {{ tt('to') }} {{ sourceAccountCurrency }}<span v-if="templateBeingUsed.conversionCommission > 0"> ({{ tt('Commission') }}: {{ templateBeingUsed.conversionCommission }}%)</span>
+                                            </div>
+                                        </div>
+                                    </v-alert>
+                                </v-col>
                                 <v-col cols="12" v-if="type === TransactionEditPageType.Template && transaction instanceof TransactionTemplate">
                                     <v-text-field
                                         type="text"
@@ -117,10 +130,10 @@
                                         v-model="transaction.name"
                                     />
                                 </v-col>
-                                <v-col cols="12" :md="transaction.type === TransactionType.Transfer ? 6 : 12">
+                                <v-col cols="12" :md="transaction.type === TransactionType.Transfer ? 6 : 12" v-if="!isNormalTemplate">
                                     <amount-input class="transaction-edit-amount font-weight-bold"
                                                   :color="sourceAmountColor"
-                                                  :currency="sourceAccountCurrency"
+                                                  :currency="amountInputCurrency"
                                                   :show-currency="true"
                                                   :readonly="mode === TransactionEditPageMode.View"
                                                   :disabled="loading || submitting || recognizing"
@@ -131,7 +144,7 @@
                                                   :enable-formula="mode !== TransactionEditPageMode.View"
                                                   v-model="transaction.sourceAmount"/>
                                 </v-col>
-                                <v-col cols="12" :md="6" v-if="transaction.type === TransactionType.Transfer">
+                                <v-col cols="12" :md="6" v-if="transaction.type === TransactionType.Transfer && !isNormalTemplate">
                                     <amount-input class="transaction-edit-amount font-weight-bold" color="primary"
                                                   :currency="destinationAccountCurrency"
                                                   :show-currency="true"
@@ -228,7 +241,7 @@
                                                                    secondary-key-field="id" secondary-value-field="id"
                                                                    secondary-title-field="name" secondary-footer-field="displayBalance"
                                                                    secondary-icon-field="icon" secondary-icon-type-field="iconType" secondary-icon-type="account" secondary-color-field="color"
-                                                                   :readonly="mode === TransactionEditPageMode.View"
+                                                                   :readonly="mode === TransactionEditPageMode.View || isUsingNormalTemplate"
                                                                    :disabled="loading || submitting || recognizing || !allVisibleAccounts.length || (mode === TransactionEditPageMode.Edit && transaction.type === TransactionType.ModifyBalance)"
                                                                    :enable-filter="true" :filter-placeholder="tt('Find account')" :filter-no-items-text="tt('No available account')"
                                                                    :custom-selection-primary-text="sourceAccountName"
@@ -362,6 +375,61 @@
                                         :label="transactionDescriptionTitle"
                                         :placeholder="tt('Your transaction description (optional)')"
                                         v-model="transaction.comment"
+                                    />
+                                </v-col>
+                            </v-row>
+                        </v-form>
+                    </v-window-item>
+                    <v-window-item value="conversion" v-if="shouldShowCurrencyConversion && transaction instanceof TransactionTemplate">
+                        <v-form class="my-4">
+                            <v-row>
+                                <v-col cols="12">
+                                    <v-checkbox :readonly="mode === TransactionEditPageMode.View"
+                                                :disabled="loading || submitting"
+                                                :label="tt('Apply conversion')"
+                                                v-model="applyConversion"/>
+                                </v-col>
+                                <v-col cols="12" md="6">
+                                    <v-autocomplete
+                                        item-title="displayName"
+                                        item-value="currencyCode"
+                                        clearable
+                                        persistent-placeholder
+                                        :readonly="mode === TransactionEditPageMode.View"
+                                        :disabled="loading || submitting || !applyConversion"
+                                        :label="tt('Transaction Currency')"
+                                        :placeholder="tt('Select Transaction Currency')"
+                                        :items="allCurrencies"
+                                        :model-value="applyConversion ? transaction.sourceCurrency : undefined"
+                                        @update:model-value="(transaction as TransactionTemplate).sourceCurrency = applyConversion ? $event : undefined"
+                                    >
+                                        <template #selection="{ item }">
+                                            <span>{{ item.currencyCode }} - {{ item.displayName }}</span>
+                                        </template>
+                                        <template #item="{ props, item }">
+                                            <v-list-item v-bind="props">
+                                                <template #title>
+                                                    <span>{{ item.currencyCode }} - {{ item.displayName }}</span>
+                                                </template>
+                                            </v-list-item>
+                                        </template>
+                                    </v-autocomplete>
+                                </v-col>
+                                <v-col cols="12" md="6">
+                                    <v-text-field
+                                        type="number"
+                                        min="0"
+                                        max="99.99"
+                                        step="0.01"
+                                        suffix="%"
+                                        persistent-placeholder
+                                        persistent-hint
+                                        :readonly="mode === TransactionEditPageMode.View"
+                                        :disabled="loading || submitting || !applyConversion"
+                                        :label="tt('Conversion Commission')"
+                                        :placeholder="tt('0.00')"
+                                        :hint="tt('Additional percentage fee applied during currency conversion')"
+                                        v-model.number="transaction.conversionCommission"
                                     />
                                 </v-col>
                             </v-row>
@@ -527,6 +595,7 @@ import { useTransactionCategoriesStore } from '@/stores/transactionCategory.ts';
 import { useTransactionTagsStore } from '@/stores/transactionTag.ts';
 import { useTransactionsStore } from '@/stores/transaction.ts';
 import { useTransactionTemplatesStore } from '@/stores/transactionTemplate.ts';
+import { useExchangeRatesStore } from '@/stores/exchangeRates.ts';
 
 import type { Coordinate } from '@/core/coordinate.ts';
 import { CategoryType } from '@/core/category.ts';
@@ -541,7 +610,9 @@ import { TransactionTemplate } from '@/models/transaction_template.ts';
 import type { TransactionPictureInfoBasicResponse } from '@/models/transaction_picture_info.ts';
 import { Transaction } from '@/models/transaction.ts';
 
-import { isDefined, isEquals } from '@/lib/common.ts';
+import { isDefined, isEquals, isNumber } from '@/lib/common.ts';
+import { getCurrencyFraction } from '@/lib/currency.ts';
+import { parseBigDecimal, getAmountWithDecimalNumberCount } from '@/lib/numeral.ts';
 import {
     getTimezoneOffsetMinutes,
     getCurrentUnixTime
@@ -603,7 +674,7 @@ const props = defineProps<{
     show?: boolean;
 }>();
 
-const { tt, formatCoordinate } = useI18n();
+const { tt, getAllCurrencies, formatCoordinate } = useI18n();
 
 const {
     mode,
@@ -665,6 +736,7 @@ const transactionCategoriesStore = useTransactionCategoriesStore();
 const transactionTagsStore = useTransactionTagsStore();
 const transactionsStore = useTransactionsStore();
 const transactionTemplatesStore = useTransactionTemplatesStore();
+const exchangeRatesStore = useExchangeRatesStore();
 
 const map = useTemplateRef<MapViewType>('map');
 const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
@@ -686,6 +758,48 @@ const removingPictureId = ref<string>('');
 const pastedText = ref<string>('');
 
 const initOptions = ref<TransactionEditOptions | undefined>(undefined);
+
+const allCurrencies = computed(() => getAllCurrencies());
+
+const isNormalTemplate = computed<boolean>(() => {
+    return props.type === TransactionEditPageType.Template && transaction.value instanceof TransactionTemplate && transaction.value.templateType === TemplateType.Normal.type;
+});
+
+const shouldShowCurrencyConversion = computed<boolean>(() => {
+    return props.type === TransactionEditPageType.Template && transaction.value instanceof TransactionTemplate && transaction.value.type === TransactionType.Expense;
+});
+
+const applyConversion = computed<boolean>({
+    get: () => transaction.value instanceof TransactionTemplate ? transaction.value.enableConversion : false,
+    set: (value: boolean) => {
+        if (transaction.value instanceof TransactionTemplate) {
+            transaction.value.enableConversion = value;
+
+            if (!value) {
+                transaction.value.sourceCurrency = undefined;
+            }
+        }
+    }
+});
+
+const templateBeingUsed = computed<TransactionTemplate | null>(() => {
+    if (!addByTemplateId.value || props.type !== TransactionEditPageType.Transaction) {
+        return null;
+    }
+
+    return transactionTemplatesStore.allTransactionTemplatesMap[TemplateType.Normal.type]?.[addByTemplateId.value] || null;
+});
+
+const isUsingNormalTemplate = computed<boolean>(() => !!templateBeingUsed.value);
+
+const amountInputCurrency = computed<string>(() => {
+    // when using a normal template with conversion enabled, the amount is entered in the template's currency
+    if (templateBeingUsed.value?.enableConversion && templateBeingUsed.value.sourceCurrency) {
+        return templateBeingUsed.value.sourceCurrency;
+    }
+
+    return sourceAccountCurrency.value;
+});
 
 const sourceAmountColor = computed<string | undefined>(() => {
     if (transaction.value.type === TransactionType.Expense) {
@@ -786,6 +900,11 @@ function open(options: TransactionEditOptions): Promise<TransactionEditResponse 
         if (initTemplate.value.templateType === TemplateType.Schedule.type) {
             initTemplate.value.scheduledFrequencyType = ScheduledTemplateFrequencyType.Disabled.type;
             initTemplate.value.scheduledFrequency = '';
+        } else if (initTemplate.value.templateType === TemplateType.Normal.type) {
+            initTemplate.value.type = TransactionType.Expense;
+            initTemplate.value.enableConversion = false;
+            initTemplate.value.sourceCurrency = undefined;
+            initTemplate.value.conversionCommission = 0;
         }
 
         transaction.value = TransactionTemplate.ofTemplate(initTemplate.value);
@@ -890,6 +1009,32 @@ function open(options: TransactionEditOptions): Promise<TransactionEditResponse 
     });
 }
 
+function getSourceAmountConvertedByTemplate(amount: number): number | null {
+    const template = templateBeingUsed.value;
+    const templateCurrency = template?.sourceCurrency;
+    const accountCurrency = sourceAccountCurrency.value;
+
+    if (!template || !template.enableConversion || !templateCurrency || !accountCurrency || templateCurrency === accountCurrency) {
+        return amount;
+    }
+
+    const convertedAmount = exchangeRatesStore.getExchangedAmount(parseBigDecimal(amount), templateCurrency, accountCurrency);
+
+    if (!convertedAmount) {
+        return null;
+    }
+
+    const commission = template.conversionCommission || 0;
+    let finalAmount = parseBigDecimal(Math.round(convertedAmount.multiply(100 + commission).divide(100).toDoubleNumber()));
+    const accountCurrencyFraction = getCurrencyFraction(accountCurrency);
+
+    if (isNumber(accountCurrencyFraction)) {
+        finalAmount = getAmountWithDecimalNumberCount(finalAmount, accountCurrencyFraction);
+    }
+
+    return finalAmount.toSafeIntegerNumber();
+}
+
 function save(afterAction: AfterSaveAction): void {
     const problemMessage = inputEmptyProblemMessage.value;
 
@@ -900,14 +1045,29 @@ function save(afterAction: AfterSaveAction): void {
 
     if (props.type === TransactionEditPageType.Transaction && (mode.value === TransactionEditPageMode.Add || mode.value === TransactionEditPageMode.Edit)) {
         const doSubmit = function () {
+            const sourceAmountToSave = getSourceAmountConvertedByTemplate(transaction.value.sourceAmount);
+
+            if (!isNumber(sourceAmountToSave)) {
+                snackbar.value?.showMessage(`${tt('Failed to convert currency from')} ${templateBeingUsed.value?.sourceCurrency} ${tt('to')} ${sourceAccountCurrency.value}. ${tt('Please check exchange rates')}.`);
+                return;
+            }
+
             submitting.value = true;
 
-            transactionsStore.saveTransaction({
+            // the request is built synchronously, so the entered amount can be restored right after the call
+            const originalSourceAmount = transaction.value.sourceAmount;
+            transaction.value.sourceAmount = sourceAmountToSave;
+
+            const savePromise = transactionsStore.saveTransaction({
                 transaction: transaction.value as Transaction,
                 defaultCurrency: defaultCurrency.value,
                 isEdit: mode.value === TransactionEditPageMode.Edit,
                 clientSessionId: clientSessionId.value
-            }).then(() => {
+            });
+
+            transaction.value.sourceAmount = originalSourceAmount;
+
+            savePromise.then(() => {
                 submitting.value = false;
                 submitted.value = true;
 

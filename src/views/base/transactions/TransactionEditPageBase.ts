@@ -385,6 +385,16 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
             if (!transaction.value.name) {
                 return 'Template name cannot be blank';
             }
+
+            if (transaction.value.templateType === TemplateType.Normal.type && transaction.value.enableConversion) {
+                if (!transaction.value.sourceCurrency) {
+                    return 'Transaction currency cannot be blank';
+                }
+
+                if (transaction.value.conversionCommission < 0 || transaction.value.conversionCommission >= 100) {
+                    return 'Conversion commission must be between 0 and 99.99';
+                }
+            }
         }
 
         return null;

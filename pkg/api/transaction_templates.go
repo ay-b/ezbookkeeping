@@ -290,11 +290,17 @@ func (a *TransactionTemplatesApi) TemplateModifyHandler(c *core.WebContext) (any
 		CategoryId:           templateModifyReq.CategoryId,
 		AccountId:            templateModifyReq.SourceAccountId,
 		TagIds:               strings.Join(templateModifyReq.TagIds, ","),
+		EnableConversion:     templateModifyReq.EnableConversion != nil && *templateModifyReq.EnableConversion,
+		SourceCurrency:       templateModifyReq.SourceCurrency,
 		Amount:               templateModifyReq.SourceAmount,
 		RelatedAccountId:     templateModifyReq.DestinationAccountId,
 		RelatedAccountAmount: templateModifyReq.DestinationAmount,
 		HideAmount:           templateModifyReq.HideAmount,
 		Comment:              templateModifyReq.Comment,
+	}
+
+	if templateModifyReq.ConversionCommission != nil {
+		newTemplate.ConversionCommission = *templateModifyReq.ConversionCommission
 	}
 
 	if template.TemplateType == models.TRANSACTION_TEMPLATE_TYPE_SCHEDULE {
@@ -510,12 +516,18 @@ func (a *TransactionTemplatesApi) createNewTemplateModel(c *core.WebContext, uid
 		CategoryId:           templateCreateReq.CategoryId,
 		AccountId:            templateCreateReq.SourceAccountId,
 		TagIds:               strings.Join(templateCreateReq.TagIds, ","),
+		EnableConversion:     templateCreateReq.EnableConversion != nil && *templateCreateReq.EnableConversion,
+		SourceCurrency:       templateCreateReq.SourceCurrency,
 		Amount:               templateCreateReq.SourceAmount,
 		RelatedAccountId:     templateCreateReq.DestinationAccountId,
 		RelatedAccountAmount: templateCreateReq.DestinationAmount,
 		HideAmount:           templateCreateReq.HideAmount,
 		Comment:              templateCreateReq.Comment,
 		DisplayOrder:         order,
+	}
+
+	if templateCreateReq.ConversionCommission != nil {
+		template.ConversionCommission = *templateCreateReq.ConversionCommission
 	}
 
 	if templateCreateReq.TemplateType == models.TRANSACTION_TEMPLATE_TYPE_SCHEDULE {

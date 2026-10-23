@@ -7,6 +7,9 @@ import { Transaction, type TransactionInfoResponse } from './transaction.ts';
 export class TransactionTemplate extends Transaction implements TransactionTemplateInfoResponse {
     public templateType: number;
     public name: string;
+    public enableConversion: boolean;
+    public sourceCurrency?: string;
+    public conversionCommission: number;
     public scheduledFrequencyType?: number;
     public scheduledFrequency?: string;
     public scheduledStartDate?: TextualYearMonthDay;
@@ -15,10 +18,13 @@ export class TransactionTemplate extends Transaction implements TransactionTempl
     public displayOrder: number;
     public hidden: boolean;
 
-    private constructor(id: string, templateType: number, name: string, type: number, categoryId: string, timeZone: string | undefined, utcOffset: number, sourceAccountId: string, destinationAccountId: string, sourceAmount: number, destinationAmount: number, hideAmount: boolean, scheduledFrequencyType: number | undefined, scheduledFrequency: string | undefined, scheduledStartDate: TextualYearMonthDay | undefined, scheduledEndDate: TextualYearMonthDay | undefined, scheduledAt: number | undefined, tagIds: string[], comment: string, editable: boolean, displayOrder: number, hidden: boolean) {
+    private constructor(id: string, templateType: number, name: string, type: number, categoryId: string, timeZone: string | undefined, utcOffset: number, sourceAccountId: string, destinationAccountId: string, sourceAmount: number, destinationAmount: number, hideAmount: boolean, enableConversion: boolean, sourceCurrency: string | undefined, conversionCommission: number, scheduledFrequencyType: number | undefined, scheduledFrequency: string | undefined, scheduledStartDate: TextualYearMonthDay | undefined, scheduledEndDate: TextualYearMonthDay | undefined, scheduledAt: number | undefined, tagIds: string[], comment: string, editable: boolean, displayOrder: number, hidden: boolean) {
         super(id, '', type, categoryId, 0, timeZone, utcOffset, sourceAccountId, destinationAccountId, sourceAmount, destinationAmount, hideAmount, tagIds, comment, editable);
         this.templateType = templateType;
         this.name = name;
+        this.enableConversion = enableConversion;
+        this.sourceCurrency = sourceCurrency;
+        this.conversionCommission = conversionCommission || 0;
         this.scheduledFrequencyType = scheduledFrequencyType;
         this.scheduledFrequency = scheduledFrequency;
         this.scheduledStartDate = scheduledStartDate;
@@ -31,6 +37,9 @@ export class TransactionTemplate extends Transaction implements TransactionTempl
     public fillFrom(other: TransactionTemplate): void {
         this.templateType = other.templateType;
         this.name = other.name;
+        this.enableConversion = other.enableConversion;
+        this.sourceCurrency = other.sourceCurrency;
+        this.conversionCommission = other.conversionCommission;
 
         if (this.templateType === TemplateType.Schedule.type) {
             this.scheduledFrequencyType = other.scheduledFrequencyType;
@@ -50,9 +59,12 @@ export class TransactionTemplate extends Transaction implements TransactionTempl
             categoryId: this.getCategoryId(),
             sourceAccountId: this.sourceAccountId,
             destinationAccountId: this.type === TransactionType.Transfer ? this.destinationAccountId : '0',
-            sourceAmount: this.sourceAmount,
-            destinationAmount: this.type === TransactionType.Transfer ? this.destinationAmount : 0,
+            sourceAmount: this.templateType === TemplateType.Schedule.type ? this.sourceAmount : 0,
+            destinationAmount: this.templateType === TemplateType.Schedule.type && this.type === TransactionType.Transfer ? this.destinationAmount : 0,
             hideAmount: this.hideAmount,
+            enableConversion: this.enableConversion,
+            sourceCurrency: this.enableConversion ? this.sourceCurrency : undefined,
+            conversionCommission: this.enableConversion ? this.conversionCommission : undefined,
             tagIds: this.tagIds,
             comment: this.comment,
             scheduledFrequencyType: this.templateType === TemplateType.Schedule.type ? this.scheduledFrequencyType : undefined,
@@ -73,9 +85,12 @@ export class TransactionTemplate extends Transaction implements TransactionTempl
             categoryId: this.getCategoryId(),
             sourceAccountId: this.sourceAccountId,
             destinationAccountId: this.type === TransactionType.Transfer ? this.destinationAccountId : '0',
-            sourceAmount: this.sourceAmount,
-            destinationAmount: this.type === TransactionType.Transfer ? this.destinationAmount : 0,
+            sourceAmount: this.templateType === TemplateType.Schedule.type ? this.sourceAmount : 0,
+            destinationAmount: this.templateType === TemplateType.Schedule.type && this.type === TransactionType.Transfer ? this.destinationAmount : 0,
             hideAmount: this.hideAmount,
+            enableConversion: this.enableConversion,
+            sourceCurrency: this.enableConversion ? this.sourceCurrency : undefined,
+            conversionCommission: this.enableConversion ? this.conversionCommission : undefined,
             tagIds: this.tagIds,
             comment: this.comment,
             scheduledFrequencyType: this.templateType === TemplateType.Schedule.type ? this.scheduledFrequencyType : undefined,
@@ -101,6 +116,9 @@ export class TransactionTemplate extends Transaction implements TransactionTempl
             transaction.sourceAmount,
             transaction.destinationAmount,
             transaction.hideAmount,
+            false, // enableConversion
+            undefined, // sourceCurrency
+            0, // conversionCommission
             undefined, // scheduledFrequencyType
             undefined, // scheduledFrequency
             undefined, // scheduledStartDate
@@ -128,6 +146,9 @@ export class TransactionTemplate extends Transaction implements TransactionTempl
             templateResponse.sourceAmount,
             templateResponse.destinationAmount,
             templateResponse.hideAmount,
+            templateResponse.enableConversion ?? false,
+            templateResponse.sourceCurrency ?? undefined,
+            templateResponse.conversionCommission ?? 0,
             templateResponse.scheduledFrequencyType,
             templateResponse.scheduledFrequency,
             templateResponse.scheduledStartDate ?? undefined,
@@ -162,6 +183,9 @@ export interface TransactionTemplateCreateRequest {
     readonly sourceAmount: number;
     readonly destinationAmount: number;
     readonly hideAmount: boolean;
+    readonly enableConversion?: boolean;
+    readonly sourceCurrency?: string;
+    readonly conversionCommission?: number;
     readonly tagIds: string[];
     readonly comment: string;
     readonly scheduledFrequencyType?: number;
@@ -183,6 +207,9 @@ export interface TransactionTemplateModifyRequest {
     readonly sourceAmount: number;
     readonly destinationAmount: number;
     readonly hideAmount: boolean;
+    readonly enableConversion?: boolean;
+    readonly sourceCurrency?: string;
+    readonly conversionCommission?: number;
     readonly tagIds: string[];
     readonly comment: string;
     readonly scheduledFrequencyType?: number;
@@ -214,6 +241,9 @@ export interface TransactionTemplateDeleteRequest {
 export interface TransactionTemplateInfoResponse extends TransactionInfoResponse {
     readonly templateType: number;
     readonly name: string;
+    readonly enableConversion?: boolean;
+    readonly sourceCurrency?: string;
+    readonly conversionCommission?: number;
     readonly scheduledFrequencyType?: number;
     readonly scheduledFrequency?: string;
     readonly scheduledStartDate?: TextualYearMonthDay;
