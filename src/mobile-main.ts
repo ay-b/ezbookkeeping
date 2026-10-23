@@ -185,4 +185,13 @@ app.component('AIImageRecognitionSheet', AIImageRecognitionSheet);
 
 app.directive('TextareaAutoSize', TextareaAutoSize);
 
+// framework7 disables the context menu of the whole document, keep the native menu (paste, select, etc.) in editable fields
+document.addEventListener('contextmenu', (e: Event) => {
+    const target = e.target as HTMLElement | null;
+
+    if (target && target.closest && target.closest('input, textarea, [contenteditable="true"]')) {
+        e.stopPropagation();
+    }
+}, true);
+
 app.mount('#app');
