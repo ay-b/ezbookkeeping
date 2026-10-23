@@ -605,6 +605,7 @@ import { KnownFileType } from '@/core/file.ts';
 
 import { KnownErrorCode } from '@/consts/api.ts';
 import { SUPPORTED_IMAGE_EXTENSIONS } from '@/consts/file.ts';
+import { TRANSACTION_MAX_COMMENT_LENGTH } from '@/consts/transaction.ts';
 
 import { TransactionTemplate } from '@/models/transaction_template.ts';
 import type { TransactionPictureInfoBasicResponse } from '@/models/transaction_picture_info.ts';
@@ -613,6 +614,7 @@ import { Transaction } from '@/models/transaction.ts';
 import { isDefined, isEquals, isNumber } from '@/lib/common.ts';
 import { getCurrencyFraction } from '@/lib/currency.ts';
 import { parseBigDecimal, getAmountWithDecimalNumberCount } from '@/lib/numeral.ts';
+import { getTemplateConversionNoteLine, appendTemplateConversionNoteLine } from '@/lib/template.ts';
 import {
     getTimezoneOffsetMinutes,
     getCurrentUnixTime
@@ -1009,12 +1011,17 @@ function open(options: TransactionEditOptions): Promise<TransactionEditResponse 
     });
 }
 
+function isTemplateConversionApplied(): boolean {
+    const template = templateBeingUsed.value;
+    return !!template && template.enableConversion && !!template.sourceCurrency && !!sourceAccountCurrency.value && template.sourceCurrency !== sourceAccountCurrency.value;
+}
+
 function getSourceAmountConvertedByTemplate(amount: number): number | null {
     const template = templateBeingUsed.value;
     const templateCurrency = template?.sourceCurrency;
     const accountCurrency = sourceAccountCurrency.value;
 
-    if (!template || !template.enableConversion || !templateCurrency || !accountCurrency || templateCurrency === accountCurrency) {
+    if (!template || !templateCurrency || !isTemplateConversionApplied()) {
         return amount;
     }
 
@@ -1052,11 +1059,25 @@ function save(afterAction: AfterSaveAction): void {
                 return;
             }
 
+            let commentToSave = transaction.value.comment;
+
+            if (isTemplateConversionApplied() && templateBeingUsed.value?.sourceCurrency) {
+                const noteLine = getTemplateConversionNoteLine(transaction.value.sourceAmount, templateBeingUsed.value.sourceCurrency, sourceAccountCurrency.value);
+                commentToSave = appendTemplateConversionNoteLine(transaction.value.comment, noteLine);
+
+                if (commentToSave.length > TRANSACTION_MAX_COMMENT_LENGTH) {
+                    snackbar.value?.showMessage('Description is too long to add the currency conversion details');
+                    return;
+                }
+            }
+
             submitting.value = true;
 
-            // the request is built synchronously, so the entered amount can be restored right after the call
+            // the request is built synchronously, so the entered amount and description can be restored right after the call
             const originalSourceAmount = transaction.value.sourceAmount;
+            const originalComment = transaction.value.comment;
             transaction.value.sourceAmount = sourceAmountToSave;
+            transaction.value.comment = commentToSave;
 
             const savePromise = transactionsStore.saveTransaction({
                 transaction: transaction.value as Transaction,
@@ -1066,6 +1087,7 @@ function save(afterAction: AfterSaveAction): void {
             });
 
             transaction.value.sourceAmount = originalSourceAmount;
+            transaction.value.comment = originalComment;
 
             savePromise.then(() => {
                 submitting.value = false;
