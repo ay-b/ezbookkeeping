@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"xorm.io/builder"
 	"xorm.io/xorm"
@@ -763,7 +765,10 @@ func (s *TransactionService) BatchCreateTransactions(c core.Context, uid int64, 
 }
 
 // CreateScheduledTransactions saves all scheduled transactions that should be created now
-func (s *TransactionService) CreateScheduledTransactions(c core.Context, currentUnixTime int64, interval time.Duration) error {
+// ScheduledTransactionExchangeRateGetter returns the rate to convert an amount from one currency to another for the specified user
+type ScheduledTransactionExchangeRateGetter func(c core.Context, uid int64, fromCurrency string, toCurrency string) (*big.Rat, error)
+
+func (s *TransactionService) CreateScheduledTransactions(c core.Context, currentUnixTime int64, interval time.Duration, getExchangeRate ScheduledTransactionExchangeRateGetter) error {
 	var allTemplates []*models.TransactionTemplate
 	intervalMinute := int(interval / time.Minute)
 	currentTime := time.Unix(currentUnixTime, 0)
@@ -821,6 +826,16 @@ func (s *TransactionService) CreateScheduledTransactions(c core.Context, current
 		if transaction == nil {
 			skipCount++
 			continue
+		}
+
+		if template.EnableConversion && template.Type != models.TRANSACTION_TYPE_TRANSFER {
+			err := s.applyTransactionTemplateConversion(c, template, transaction, getExchangeRate)
+
+			if err != nil {
+				failedCount++
+				log.Errorf(c, "[transactions.CreateScheduledTransactions] transaction template \"id:%d\" failed to convert amount from template currency, because %s", template.TemplateId, err.Error())
+				continue
+			}
 		}
 
 		err := s.CreateTransaction(c, transaction, tagIds, nil)
@@ -3203,6 +3218,90 @@ func (s *TransactionService) appendFilterPicturesConditionToQuery(sess *xorm.Ses
 	sess.And(builder.Or(builder.In("transaction_id", subQuery), builder.In("related_id", subQuery)))
 
 	return sess
+}
+
+func (s *TransactionService) applyTransactionTemplateConversion(c core.Context, template *models.TransactionTemplate, transaction *models.Transaction, getExchangeRate ScheduledTransactionExchangeRateGetter) error {
+	if template.SourceCurrency == nil || *template.SourceCurrency == "" {
+		return errs.ErrTransactionCurrencyInvalid
+	}
+
+	account, err := Accounts.GetAccountByAccountId(c, template.Uid, template.AccountId)
+
+	if err != nil {
+		return err
+	}
+
+	if account.Currency == *template.SourceCurrency {
+		return nil
+	}
+
+	if getExchangeRate == nil {
+		return errs.ErrInvalidExchangeRatesDataSource
+	}
+
+	rate, err := getExchangeRate(c, template.Uid, *template.SourceCurrency, account.Currency)
+
+	if err != nil {
+		return err
+	}
+
+	transaction.Amount = getAmountConvertedByTemplate(template.Amount, rate, template.ConversionCommission)
+	comment, ok := appendTemplateConversionNote(transaction.Comment, template.Amount, *template.SourceCurrency, account.Currency)
+
+	if ok {
+		transaction.Comment = comment
+	} else {
+		log.Warnf(c, "[transactions.applyTransactionTemplateConversion] transaction template \"id:%d\" description is too long to add the currency conversion details", template.TemplateId)
+	}
+
+	log.Infof(c, "[transactions.applyTransactionTemplateConversion] transaction template \"id:%d\" converted amount %d %s to %d %s", template.TemplateId, template.Amount, *template.SourceCurrency, transaction.Amount, account.Currency)
+
+	return nil
+}
+
+// getAmountConvertedByTemplate returns the amount multiplied by the exchange rate and increased by the commission percentage, rounded half away from zero
+func getAmountConvertedByTemplate(amount int64, rate *big.Rat, commission float64) int64 {
+	commissionRate, _ := new(big.Rat).SetString(strconv.FormatFloat(commission, 'f', 2, 64))
+	multiplier := new(big.Rat).Add(big.NewRat(100, 1), commissionRate)
+	multiplier.Quo(multiplier, big.NewRat(100, 1))
+
+	converted := new(big.Rat).Mul(big.NewRat(amount, 1), rate)
+	converted.Mul(converted, multiplier)
+
+	numerator := new(big.Int).Abs(converted.Num())
+	denominator := converted.Denom()
+	rounded := new(big.Int).Mul(numerator, big.NewInt(2))
+	rounded.Add(rounded, denominator)
+	rounded.Quo(rounded, new(big.Int).Mul(denominator, big.NewInt(2)))
+
+	if converted.Sign() < 0 {
+		rounded.Neg(rounded)
+	}
+
+	return rounded.Int64()
+}
+
+// appendTemplateConversionNote returns the comment with the original amount line appended, or false if the result would be too long
+func appendTemplateConversionNote(comment string, amount int64, fromCurrency string, toCurrency string) (string, bool) {
+	absAmount := amount
+
+	if absAmount < 0 {
+		absAmount = -absAmount
+	}
+
+	noteLine := fmt.Sprintf("%s%d.%02d converted to %s with template", fromCurrency, absAmount/100, absAmount%100, toCurrency)
+	existingComment := strings.TrimRight(comment, " \t\r\n")
+	result := noteLine
+
+	if existingComment != "" {
+		result = existingComment + "\n\n" + noteLine
+	}
+
+	if utf8.RuneCountInString(result) > 255 {
+		return comment, false
+	}
+
+	return result, true
 }
 
 func (s *TransactionService) createTransactionByScheduledTransactionTemplate(c core.Context, template *models.TransactionTemplate, startTimeInUTC time.Time, todayFirstUnixTimeInUTC int64) (*models.Transaction, []int64) {

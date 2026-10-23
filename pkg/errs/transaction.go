@@ -52,4 +52,5 @@ var (
 	ErrAmountInvalid                                               = NewNormalError(NormalSubcategoryTransaction, 45, http.StatusBadRequest, "transaction amount is invalid")
 	ErrGeographicLocationInvalid                                   = NewNormalError(NormalSubcategoryTransaction, 46, http.StatusBadRequest, "geographic location is invalid")
 	ErrTransactionCurrencyInvalid                                  = NewNormalError(NormalSubcategoryTransaction, 47, http.StatusBadRequest, "transaction currency is invalid")
+	ErrTransactionExchangeRateNotFound                             = NewNormalError(NormalSubcategoryTransaction, 48, http.StatusBadRequest, "exchange rate of transaction currency is not found")
 )

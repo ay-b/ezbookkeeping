@@ -332,15 +332,28 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
 
     const isUsingNormalTemplate = computed<boolean>(() => !!templateBeingUsed.value);
 
+    // the template whose currency conversion applies to the amount being entered: the normal template used to add a transaction, or the template being edited
+    const conversionTemplate = computed<TransactionTemplate | null>(() => {
+        if (templateBeingUsed.value) {
+            return templateBeingUsed.value;
+        }
+
+        if (type === TransactionEditPageType.Template && transaction.value instanceof TransactionTemplate) {
+            return transaction.value;
+        }
+
+        return null;
+    });
+
     const isTemplateConversionApplied = computed<boolean>(() => {
-        const template = templateBeingUsed.value;
+        const template = conversionTemplate.value;
         return !!template && template.enableConversion && !!template.sourceCurrency && template.sourceCurrency !== sourceAccountCurrency.value;
     });
 
     const amountInputCurrency = computed<string>(() => {
-        // when using a normal template with conversion, the amount is entered in the template's currency
-        if (isTemplateConversionApplied.value && templateBeingUsed.value?.sourceCurrency) {
-            return templateBeingUsed.value.sourceCurrency;
+        // when the template converts currency, the amount is entered in the template's currency
+        if (isTemplateConversionApplied.value && conversionTemplate.value?.sourceCurrency) {
+            return conversionTemplate.value.sourceCurrency;
         }
 
         return sourceAccountCurrency.value;
@@ -423,7 +436,7 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
                 return 'Template name cannot be blank';
             }
 
-            if (transaction.value.templateType === TemplateType.Normal.type && transaction.value.enableConversion) {
+            if (transaction.value.enableConversion) {
                 if (!transaction.value.sourceCurrency) {
                     return 'Transaction currency cannot be blank';
                 }
@@ -442,10 +455,10 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
     });
 
     function getSourceAmountConvertedByTemplate(amount: number): number | null {
-        const templateCurrency = templateBeingUsed.value?.sourceCurrency;
+        const templateCurrency = conversionTemplate.value?.sourceCurrency;
         const accountCurrency = sourceAccountCurrency.value;
 
-        if (!templateBeingUsed.value || !templateCurrency || !isTemplateConversionApplied.value) {
+        if (!conversionTemplate.value || !templateCurrency || !isTemplateConversionApplied.value) {
             return amount;
         }
 
@@ -455,7 +468,7 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
             return null;
         }
 
-        const commission = templateBeingUsed.value.conversionCommission || 0;
+        const commission = conversionTemplate.value.conversionCommission || 0;
         let finalAmount = parseBigDecimal(Math.round(convertedAmount.multiply(100 + commission).divide(100).toDoubleNumber()));
         const accountCurrencyFraction = getCurrencyFraction(accountCurrency);
 
@@ -468,6 +481,7 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
 
     // returns the amount and description to save, or an error message when the template conversion cannot be applied
     function getTemplateConvertedValuesToSave(): { sourceAmount: number, comment: string } | string {
+        // only a transaction added by a normal template is converted when saving, the scheduled transactions are converted by the server
         if (!isTemplateConversionApplied.value || !templateBeingUsed.value?.sourceCurrency) {
             return { sourceAmount: transaction.value.sourceAmount, comment: transaction.value.comment };
         }

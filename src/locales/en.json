@@ -1245,6 +1245,7 @@
         "transaction time zone is invalid": "Transaction time zone is invalid",
         "transaction amount is invalid": "Transaction amount is invalid",
         "transaction currency is invalid": "Transaction currency is invalid",
+        "exchange rate of transaction currency is not found": "Exchange rate of transaction currency is not found",
         "geographic location is invalid": "Geographic location is invalid",
         "transaction category id is invalid": "Transaction category ID is invalid",
         "transaction category not found": "Transaction category is not found",

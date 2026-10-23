@@ -1,6 +1,8 @@
 package services
 
 import (
+	"math/big"
+	"strings"
 	"testing"
 	"time"
 
@@ -1566,4 +1568,61 @@ func TestCreateTransactionByScheduledTransactionTemplate_SkippedDate(t *testing.
 	actualValue, actualTagIds = Transactions.createTransactionByScheduledTransactionTemplate(core.NewNullContext(), template, startTimeInUTC, todayFirstUnixTimeInUTC)
 	assert.Equal(t, expectedValue, actualValue)
 	assert.Equal(t, []int64{}, actualTagIds)
+}
+
+func TestGetAmountConvertedByTemplate_WithCommission(t *testing.T) {
+	rate, _ := new(big.Rat).SetString("3.4939")
+
+	// 23.47 EUR * 3.4939 * 1.01 = 82.8218... ILS
+	assert.Equal(t, int64(8282), getAmountConvertedByTemplate(2347, rate, 1))
+}
+
+func TestGetAmountConvertedByTemplate_WithoutCommission(t *testing.T) {
+	rate, _ := new(big.Rat).SetString("3.4939")
+
+	// 12.00 EUR * 3.4939 = 41.9268 ILS
+	assert.Equal(t, int64(4193), getAmountConvertedByTemplate(1200, rate, 0))
+}
+
+func TestGetAmountConvertedByTemplate_FractionalCommission(t *testing.T) {
+	rate := big.NewRat(1, 1)
+
+	// 100.00 * 1.0275 = 102.75
+	assert.Equal(t, int64(10275), getAmountConvertedByTemplate(10000, rate, 2.75))
+}
+
+func TestGetAmountConvertedByTemplate_RoundHalfAwayFromZero(t *testing.T) {
+	rate := big.NewRat(1, 2)
+
+	assert.Equal(t, int64(2), getAmountConvertedByTemplate(3, rate, 0))
+	assert.Equal(t, int64(-2), getAmountConvertedByTemplate(-3, rate, 0))
+}
+
+func TestAppendTemplateConversionNote_EmptyComment(t *testing.T) {
+	comment, ok := appendTemplateConversionNote("", 2347, "EUR", "ILS")
+
+	assert.True(t, ok)
+	assert.Equal(t, "EUR23.47 converted to ILS with template", comment)
+}
+
+func TestAppendTemplateConversionNote_WithComment(t *testing.T) {
+	comment, ok := appendTemplateConversionNote("Netflix\n", 1599, "EUR", "ILS")
+
+	assert.True(t, ok)
+	assert.Equal(t, "Netflix\n\nEUR15.99 converted to ILS with template", comment)
+}
+
+func TestAppendTemplateConversionNote_SmallAmount(t *testing.T) {
+	comment, ok := appendTemplateConversionNote("", 5, "USD", "EUR")
+
+	assert.True(t, ok)
+	assert.Equal(t, "USD0.05 converted to EUR with template", comment)
+}
+
+func TestAppendTemplateConversionNote_TooLong(t *testing.T) {
+	longComment := strings.Repeat("a", 240)
+	comment, ok := appendTemplateConversionNote(longComment, 100, "EUR", "ILS")
+
+	assert.False(t, ok)
+	assert.Equal(t, longComment, comment)
 }
