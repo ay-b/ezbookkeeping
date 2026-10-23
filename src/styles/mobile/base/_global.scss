@@ -5,6 +5,16 @@ body {
     user-select: none;
 }
 
+input,
+textarea,
+[contenteditable="true"] {
+    -webkit-touch-callout: default;
+    -ms-user-select: text;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    user-select: text;
+}
+
 input::-webkit-outer-spin-button,
 input::-webkit-inner-spin-button {
     -webkit-appearance: none;
