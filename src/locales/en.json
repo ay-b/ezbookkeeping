@@ -3007,7 +3007,6 @@
     "Amount will be converted from": "Amount will be converted from",
     "to": "to",
     "Commission": "Commission",
-    "Failed to convert currency from": "Failed to convert currency from",
-    "Please check exchange rates": "Please check exchange rates",
-    "Description is too long to add the currency conversion details": "Description is too long to add the currency conversion details"
+    "Description is too long to add the currency conversion details": "Description is too long to add the currency conversion details",
+    "Failed to convert currency. Please check exchange rates": "Failed to convert currency. Please check exchange rates"
 }

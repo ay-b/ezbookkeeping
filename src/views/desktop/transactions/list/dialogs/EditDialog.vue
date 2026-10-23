@@ -595,7 +595,6 @@ import { useTransactionCategoriesStore } from '@/stores/transactionCategory.ts';
 import { useTransactionTagsStore } from '@/stores/transactionTag.ts';
 import { useTransactionsStore } from '@/stores/transaction.ts';
 import { useTransactionTemplatesStore } from '@/stores/transactionTemplate.ts';
-import { useExchangeRatesStore } from '@/stores/exchangeRates.ts';
 
 import type { Coordinate } from '@/core/coordinate.ts';
 import { CategoryType } from '@/core/category.ts';
@@ -605,16 +604,12 @@ import { KnownFileType } from '@/core/file.ts';
 
 import { KnownErrorCode } from '@/consts/api.ts';
 import { SUPPORTED_IMAGE_EXTENSIONS } from '@/consts/file.ts';
-import { TRANSACTION_MAX_COMMENT_LENGTH } from '@/consts/transaction.ts';
 
 import { TransactionTemplate } from '@/models/transaction_template.ts';
 import type { TransactionPictureInfoBasicResponse } from '@/models/transaction_picture_info.ts';
 import { Transaction } from '@/models/transaction.ts';
 
-import { isDefined, isEquals, isNumber } from '@/lib/common.ts';
-import { getCurrencyFraction } from '@/lib/currency.ts';
-import { parseBigDecimal, getAmountWithDecimalNumberCount } from '@/lib/numeral.ts';
-import { getTemplateConversionNoteLine, appendTemplateConversionNoteLine } from '@/lib/template.ts';
+import { isDefined, isEquals, isString } from '@/lib/common.ts';
 import {
     getTimezoneOffsetMinutes,
     getCurrentUnixTime
@@ -714,6 +709,9 @@ const {
     sourceAccountName,
     destinationAccountName,
     sourceAccountCurrency,
+    templateBeingUsed,
+    isUsingNormalTemplate,
+    amountInputCurrency,
     destinationAccountCurrency,
     transactionDisplayTimezone,
     transactionTimezoneTimeDifference,
@@ -728,6 +726,7 @@ const {
     updateTransactionTime,
     updateTransactionTimezone,
     swapTransactionData,
+    getTemplateConvertedValuesToSave,
     getTransactionPictureUrl
 } = useTransactionEditPageBase(props.type);
 
@@ -738,7 +737,6 @@ const transactionCategoriesStore = useTransactionCategoriesStore();
 const transactionTagsStore = useTransactionTagsStore();
 const transactionsStore = useTransactionsStore();
 const transactionTemplatesStore = useTransactionTemplatesStore();
-const exchangeRatesStore = useExchangeRatesStore();
 
 const map = useTemplateRef<MapViewType>('map');
 const confirmDialog = useTemplateRef<ConfirmDialogType>('confirmDialog');
@@ -782,25 +780,6 @@ const applyConversion = computed<boolean>({
             }
         }
     }
-});
-
-const templateBeingUsed = computed<TransactionTemplate | null>(() => {
-    if (!addByTemplateId.value || props.type !== TransactionEditPageType.Transaction) {
-        return null;
-    }
-
-    return transactionTemplatesStore.allTransactionTemplatesMap[TemplateType.Normal.type]?.[addByTemplateId.value] || null;
-});
-
-const isUsingNormalTemplate = computed<boolean>(() => !!templateBeingUsed.value);
-
-const amountInputCurrency = computed<string>(() => {
-    // when using a normal template with conversion enabled, the amount is entered in the template's currency
-    if (templateBeingUsed.value?.enableConversion && templateBeingUsed.value.sourceCurrency) {
-        return templateBeingUsed.value.sourceCurrency;
-    }
-
-    return sourceAccountCurrency.value;
 });
 
 const sourceAmountColor = computed<string | undefined>(() => {
@@ -1011,37 +990,6 @@ function open(options: TransactionEditOptions): Promise<TransactionEditResponse 
     });
 }
 
-function isTemplateConversionApplied(): boolean {
-    const template = templateBeingUsed.value;
-    return !!template && template.enableConversion && !!template.sourceCurrency && !!sourceAccountCurrency.value && template.sourceCurrency !== sourceAccountCurrency.value;
-}
-
-function getSourceAmountConvertedByTemplate(amount: number): number | null {
-    const template = templateBeingUsed.value;
-    const templateCurrency = template?.sourceCurrency;
-    const accountCurrency = sourceAccountCurrency.value;
-
-    if (!template || !templateCurrency || !isTemplateConversionApplied()) {
-        return amount;
-    }
-
-    const convertedAmount = exchangeRatesStore.getExchangedAmount(parseBigDecimal(amount), templateCurrency, accountCurrency);
-
-    if (!convertedAmount) {
-        return null;
-    }
-
-    const commission = template.conversionCommission || 0;
-    let finalAmount = parseBigDecimal(Math.round(convertedAmount.multiply(100 + commission).divide(100).toDoubleNumber()));
-    const accountCurrencyFraction = getCurrencyFraction(accountCurrency);
-
-    if (isNumber(accountCurrencyFraction)) {
-        finalAmount = getAmountWithDecimalNumberCount(finalAmount, accountCurrencyFraction);
-    }
-
-    return finalAmount.toSafeIntegerNumber();
-}
-
 function save(afterAction: AfterSaveAction): void {
     const problemMessage = inputEmptyProblemMessage.value;
 
@@ -1052,23 +1000,11 @@ function save(afterAction: AfterSaveAction): void {
 
     if (props.type === TransactionEditPageType.Transaction && (mode.value === TransactionEditPageMode.Add || mode.value === TransactionEditPageMode.Edit)) {
         const doSubmit = function () {
-            const sourceAmountToSave = getSourceAmountConvertedByTemplate(transaction.value.sourceAmount);
+            const valuesToSave = getTemplateConvertedValuesToSave();
 
-            if (!isNumber(sourceAmountToSave)) {
-                snackbar.value?.showMessage(`${tt('Failed to convert currency from')} ${templateBeingUsed.value?.sourceCurrency} ${tt('to')} ${sourceAccountCurrency.value}. ${tt('Please check exchange rates')}.`);
+            if (isString(valuesToSave)) {
+                snackbar.value?.showMessage(valuesToSave);
                 return;
-            }
-
-            let commentToSave = transaction.value.comment;
-
-            if (isTemplateConversionApplied() && templateBeingUsed.value?.sourceCurrency) {
-                const noteLine = getTemplateConversionNoteLine(transaction.value.sourceAmount, templateBeingUsed.value.sourceCurrency, sourceAccountCurrency.value);
-                commentToSave = appendTemplateConversionNoteLine(transaction.value.comment, noteLine);
-
-                if (commentToSave.length > TRANSACTION_MAX_COMMENT_LENGTH) {
-                    snackbar.value?.showMessage('Description is too long to add the currency conversion details');
-                    return;
-                }
             }
 
             submitting.value = true;
@@ -1076,8 +1012,8 @@ function save(afterAction: AfterSaveAction): void {
             // the request is built synchronously, so the entered amount and description can be restored right after the call
             const originalSourceAmount = transaction.value.sourceAmount;
             const originalComment = transaction.value.comment;
-            transaction.value.sourceAmount = sourceAmountToSave;
-            transaction.value.comment = commentToSave;
+            transaction.value.sourceAmount = valuesToSave.sourceAmount;
+            transaction.value.comment = valuesToSave.comment;
 
             const savePromise = transactionsStore.saveTransaction({
                 transaction: transaction.value as Transaction,

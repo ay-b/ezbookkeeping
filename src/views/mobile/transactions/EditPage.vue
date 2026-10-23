@@ -71,16 +71,23 @@
                 link="#" no-chevron
                 :class="sourceAmountClass"
                 :header="sourceAmountTitle"
-                :title="getDisplayAmount(parseBigDecimal(transaction.sourceAmount), transaction.hideAmount, sourceAccountCurrency)"
+                :title="getDisplayAmount(parseBigDecimal(transaction.sourceAmount), transaction.hideAmount, amountInputCurrency)"
                 @click="showSourceAmountSheet = true"
             >
                 <number-pad-sheet :min-value="TRANSACTION_MIN_AMOUNT"
                                   :max-value="TRANSACTION_MAX_AMOUNT"
-                                  :currency="sourceAccountCurrency"
+                                  :currency="amountInputCurrency"
                                   v-model:show="showSourceAmountSheet"
                                   v-model="transaction.sourceAmount"
                 ></number-pad-sheet>
             </f7-list-item>
+
+            <f7-list-item
+                class="transaction-edit-template-conversion"
+                :header="`${tt('Using template')}: ${templateBeingUsed.name}`"
+                :title="`${tt('Amount will be converted from')} ${templateBeingUsed.sourceCurrency} ${tt('to')} ${sourceAccountCurrency}` + (templateBeingUsed.conversionCommission > 0 ? ` (${tt('Commission')}: ${templateBeingUsed.conversionCommission}%)` : '')"
+                v-if="isTemplateConversionApplied && templateBeingUsed"
+            ></f7-list-item>
 
             <f7-list-item
                 class="transaction-edit-amount text-color-primary"
@@ -559,7 +566,7 @@ import { TransactionTemplate } from '@/models/transaction_template.ts';
 import type { TransactionPictureInfoBasicResponse } from '@/models/transaction_picture_info.ts';
 import { Transaction } from '@/models/transaction.ts';
 
-import { isDefined } from '@/lib/common.ts';
+import { isDefined, isString } from '@/lib/common.ts';
 import { parseBigDecimal } from '@/lib/numeral.ts';
 import {
     getTimezoneOffset,
@@ -638,6 +645,9 @@ const {
     sourceAccountName,
     destinationAccountName,
     sourceAccountCurrency,
+    templateBeingUsed,
+    isTemplateConversionApplied,
+    amountInputCurrency,
     destinationAccountCurrency,
     transactionDisplayTimezone,
     transactionTimezoneTimeDifference,
@@ -651,6 +661,7 @@ const {
     updateTransactionTime,
     updateTransactionTimezone,
     swapTransactionData,
+    getTemplateConvertedValuesToSave,
     getDisplayAmount,
     getTransactionPictureUrl
 } = useTransactionEditPageBase(pageTypeAndMode?.type || TransactionEditPageType.Transaction, pageTypeAndMode?.mode, query['type'] ? parseInt(query['type']) : undefined);
@@ -1105,15 +1116,33 @@ function save(afterAction: AfterSaveAction): void {
 
     if (pageTypeAndMode?.type === TransactionEditPageType.Transaction && (mode.value === TransactionEditPageMode.Add || mode.value === TransactionEditPageMode.Edit)) {
         const doSubmit = function () {
+            const valuesToSave = getTemplateConvertedValuesToSave();
+
+            if (isString(valuesToSave)) {
+                showToast(valuesToSave);
+                return;
+            }
+
             submitting.value = true;
             showLoading(() => submitting.value);
 
-            transactionsStore.saveTransaction({
+            // the request is built synchronously, so the entered amount and description can be restored right after the call
+            const originalSourceAmount = transaction.value.sourceAmount;
+            const originalComment = transaction.value.comment;
+            transaction.value.sourceAmount = valuesToSave.sourceAmount;
+            transaction.value.comment = valuesToSave.comment;
+
+            const savePromise = transactionsStore.saveTransaction({
                 transaction: transaction.value as Transaction,
                 defaultCurrency: defaultCurrency.value,
                 isEdit: mode.value === TransactionEditPageMode.Edit,
                 clientSessionId: clientSessionId.value
-            }).then(() => {
+            });
+
+            transaction.value.sourceAmount = originalSourceAmount;
+            transaction.value.comment = originalComment;
+
+            savePromise.then(() => {
                 submitting.value = false;
                 submitted.value = true;
                 hideLoading();
@@ -1492,6 +1521,10 @@ init();
 
 .transaction-edit-amount {
     line-height: 53px;
+}
+
+.transaction-edit-template-conversion .item-title {
+    white-space: normal;
 }
 
 .transaction-edit-amount .item-title {

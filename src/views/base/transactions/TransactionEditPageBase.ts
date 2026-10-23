@@ -9,6 +9,7 @@ import { useTransactionCategoriesStore } from '@/stores/transactionCategory.ts';
 import { useTransactionTagsStore } from '@/stores/transactionTag.ts';
 import { useTransactionsStore } from '@/stores/transaction.ts';
 import { useExchangeRatesStore } from '@/stores/exchangeRates.ts';
+import { useTransactionTemplatesStore } from '@/stores/transactionTemplate.ts';
 
 import type { BigDecimal, NumeralSystem } from '@/core/numeral.ts';
 import type { WeekDayValue } from '@/core/datetime.ts';
@@ -29,13 +30,18 @@ import type { RecognizedTransactionResponse } from '@/models/large_language_mode
 
 import {
     isArray,
-    isDefined
+    isDefined,
+    isNumber
 } from '@/lib/common.ts';
 
 import {
     parseBigDecimal,
-    getExchangedAmountByRate
+    getExchangedAmountByRate,
+    getAmountWithDecimalNumberCount
 } from '@/lib/numeral.ts';
+
+import { getCurrencyFraction } from '@/lib/currency.ts';
+import { getTemplateConversionNoteLine, appendTemplateConversionNoteLine } from '@/lib/template.ts';
 
 import {
     getUtcOffsetByUtcOffsetMinutes,
@@ -93,6 +99,7 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
     const transactionTagsStore = useTransactionTagsStore();
     const transactionsStore = useTransactionsStore();
     const exchangeRatesStore = useExchangeRatesStore();
+    const transactionTemplatesStore = useTransactionTemplatesStore();
 
     const isSupportGeoLocation: boolean = !!navigator.geolocation;
 
@@ -221,6 +228,12 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
         const sourceAccount = allAccountsMap.value[transaction.value.sourceAccountId];
         const amountName = tt(sourceAmountName.value);
 
+        // when using a template with conversion, show the amount that will be charged to the account
+        if (isTemplateConversionApplied.value) {
+            const convertedAmount = transaction.value.sourceAmount && !transaction.value.hideAmount ? getSourceAmountConvertedByTemplate(transaction.value.sourceAmount) : null;
+            return isNumber(convertedAmount) ? amountName + ` (${getDisplayAmount(parseBigDecimal(convertedAmount), false, sourceAccountCurrency.value)})` : amountName;
+        }
+
         if (!sourceAccount || sourceAccount.currency === defaultCurrency.value || !transaction.value.sourceAmount || transaction.value.hideAmount) {
             return amountName;
         }
@@ -307,6 +320,30 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
         }
 
         return defaultCurrency.value;
+    });
+
+    const templateBeingUsed = computed<TransactionTemplate | null>(() => {
+        if (!addByTemplateId.value || type !== TransactionEditPageType.Transaction) {
+            return null;
+        }
+
+        return transactionTemplatesStore.allTransactionTemplatesMap[TemplateType.Normal.type]?.[addByTemplateId.value] || null;
+    });
+
+    const isUsingNormalTemplate = computed<boolean>(() => !!templateBeingUsed.value);
+
+    const isTemplateConversionApplied = computed<boolean>(() => {
+        const template = templateBeingUsed.value;
+        return !!template && template.enableConversion && !!template.sourceCurrency && template.sourceCurrency !== sourceAccountCurrency.value;
+    });
+
+    const amountInputCurrency = computed<string>(() => {
+        // when using a normal template with conversion, the amount is entered in the template's currency
+        if (isTemplateConversionApplied.value && templateBeingUsed.value?.sourceCurrency) {
+            return templateBeingUsed.value.sourceCurrency;
+        }
+
+        return sourceAccountCurrency.value;
     });
 
     const transactionDisplayTimezone = computed<string>(() => {
@@ -403,6 +440,53 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
     const inputIsEmpty = computed<boolean>(() => {
         return !!inputEmptyProblemMessage.value;
     });
+
+    function getSourceAmountConvertedByTemplate(amount: number): number | null {
+        const templateCurrency = templateBeingUsed.value?.sourceCurrency;
+        const accountCurrency = sourceAccountCurrency.value;
+
+        if (!templateBeingUsed.value || !templateCurrency || !isTemplateConversionApplied.value) {
+            return amount;
+        }
+
+        const convertedAmount = exchangeRatesStore.getExchangedAmount(parseBigDecimal(amount), templateCurrency, accountCurrency);
+
+        if (!convertedAmount) {
+            return null;
+        }
+
+        const commission = templateBeingUsed.value.conversionCommission || 0;
+        let finalAmount = parseBigDecimal(Math.round(convertedAmount.multiply(100 + commission).divide(100).toDoubleNumber()));
+        const accountCurrencyFraction = getCurrencyFraction(accountCurrency);
+
+        if (isNumber(accountCurrencyFraction)) {
+            finalAmount = getAmountWithDecimalNumberCount(finalAmount, accountCurrencyFraction);
+        }
+
+        return finalAmount.toSafeIntegerNumber();
+    }
+
+    // returns the amount and description to save, or an error message when the template conversion cannot be applied
+    function getTemplateConvertedValuesToSave(): { sourceAmount: number, comment: string } | string {
+        if (!isTemplateConversionApplied.value || !templateBeingUsed.value?.sourceCurrency) {
+            return { sourceAmount: transaction.value.sourceAmount, comment: transaction.value.comment };
+        }
+
+        const sourceAmount = getSourceAmountConvertedByTemplate(transaction.value.sourceAmount);
+
+        if (!isNumber(sourceAmount)) {
+            return 'Failed to convert currency. Please check exchange rates';
+        }
+
+        const noteLine = getTemplateConversionNoteLine(transaction.value.sourceAmount, templateBeingUsed.value.sourceCurrency, sourceAccountCurrency.value);
+        const comment = appendTemplateConversionNoteLine(transaction.value.comment, noteLine);
+
+        if (comment.length > TRANSACTION_MAX_COMMENT_LENGTH) {
+            return 'Description is too long to add the currency conversion details';
+        }
+
+        return { sourceAmount, comment };
+    }
 
     function getCurrentUnixTimeForNewTransaction(): number {
         return getSameDateTimeWithCurrentTimezone(parseDateTimeFromUnixTimeWithBrowserTimezone(getCurrentUnixTime())).getUnixTime();
@@ -631,6 +715,10 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
         destinationAccountName,
         sourceAccountCurrency,
         destinationAccountCurrency,
+        templateBeingUsed,
+        isUsingNormalTemplate,
+        isTemplateConversionApplied,
+        amountInputCurrency,
         transactionDisplayTimezone,
         transactionTimezoneTimeDifference,
         geoLocationStatusInfo,
@@ -645,6 +733,7 @@ export function useTransactionEditPageBase(type: TransactionEditPageType, initMo
         updateTransactionTime,
         updateTransactionTimezone,
         swapTransactionData,
+        getTemplateConvertedValuesToSave,
         getDisplayAmount,
         getTransactionPictureUrl
     }
